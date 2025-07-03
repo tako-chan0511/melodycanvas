@@ -1,0 +1,79 @@
+<script setup lang="ts">
+import { useMusicStore } from '@/stores/musicStore';
+
+const musicStore = useMusicStore();
+</script>
+
+<template>
+  <div class="record-controls">
+    <button @click="musicStore.startRecording" :disabled="musicStore.isRecording || musicStore.isPlaying">
+      <span v-if="!musicStore.isRecording">録音開始</span>
+      <span v-else>録音中...</span>
+    </button>
+    <button @click="musicStore.stopRecording" :disabled="!musicStore.isRecording">
+      録音停止
+    </button>
+    <button @click="musicStore.playSequence" :disabled="musicStore.isPlaying || musicStore.recordedNotes.length === 0">
+      <span v-if="!musicStore.isPlaying">再生</span>
+      <span v-else>再生中...</span>
+    </button>
+    <button @click="musicStore.stopPlayback" :disabled="!musicStore.isPlaying">
+      再生停止
+    </button>
+    <p v-if="musicStore.isRecording" class="status-message recording">録音中...</p>
+    <p v-if="musicStore.isPlaying" class="status-message playing">再生中...</p>
+    <p v-if="musicStore.recordedNotes.length > 0 && !musicStore.isRecording && !musicStore.isPlaying" class="status-message ready">
+        ノート数: {{ musicStore.recordedNotes.length }}
+    </p>
+  </div>
+</template>
+
+<style scoped>
+.record-controls {
+  margin-bottom: 20px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 1rem;
+  background-color: #4CAF50; /* Green */
+  color: white;
+  transition: background-color 0.3s ease;
+}
+
+button:hover:not(:disabled) {
+  background-color: #45a049;
+}
+
+button:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}
+
+button:nth-of-type(1) { /* 録音開始ボタン */
+  background-color: #f44336; /* Red */
+}
+button:nth-of-type(1):hover:not(:disabled) {
+  background-color: #d32f2f;
+}
+
+.status-message {
+  margin-left: 10px;
+  font-weight: bold;
+}
+.status-message.recording {
+  color: #f44336;
+}
+.status-message.playing {
+  color: #2196F3; /* Blue */
+}
+.status-message.ready {
+    color: #4CAF50;
+}
+</style>
