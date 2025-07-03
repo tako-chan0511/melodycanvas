@@ -33,7 +33,6 @@ const release = (note: number) => musicStore.releaseNote(note);
 const whiteKeyWidth = 50;
 const blackKeyWidth = 35; // 黒鍵の幅は35pxで維持（必要なら調整）
 
-// ★重要修正点: getBlackKeyLeftPosition から補正をすべて削除
 const getBlackKeyLeftPosition = (blackMidiNote: number) => {
     let baseWhiteKeyMidi = blackMidiNote;
     const noteInOctave = blackMidiNote % 12;
@@ -56,13 +55,12 @@ const getBlackKeyLeftPosition = (blackMidiNote: number) => {
 
     const baseWhiteKeyAbsoluteLeft = whiteKeysCountBeforeBase * whiteKeyWidth;
 
-    // ★leftOffset の基本計算のみを残す★
-    // これが黒鍵が親の白鍵の右端に半分食い込む位置
     let leftOffset = baseWhiteKeyAbsoluteLeft + whiteKeyWidth - (blackKeyWidth / 2);
 
-    // ★ここにあった switch 文（fineTuneOffset の計算）はすべて削除しました★
+    // ★重要: ここにあった switch 文（fineTuneOffset の計算）はすべて削除されています。
+    // その結果、画像で黒鍵が左にずれていた状態でした。
 
-    return leftOffset; // 直接値を返す
+    return leftOffset;
 };
 
 const blackKeyStyle = (blackMidiNote: number) => {
@@ -72,8 +70,41 @@ const blackKeyStyle = (blackMidiNote: number) => {
     };
 };
 
-// ... (キーボード入力マッピング、イベントハンドラーは変更なし) ...
-// ここから下は変更なしなので省略
+const keyboardMap: { [key: string]: number } = {
+  'a': 48, 'w': 49, 's': 50, 'e': 51, 'd': 52, 'f': 53, 't': 54, 'g': 55, 'y': 56, 'h': 57, 'u': 58, 'j': 59,
+  'k': 60, 'o': 61, 'l': 62, 'p': 63, ';': 64, "'": 65, '[': 66, ']': 67,
+  'z': 60, 'x': 62, 'c': 64, 'v': 65, 'b': 67, 'n': 69, 'm': 71,
+  'q': 72,
+};
+
+const pressedKeys = new Set<string>();
+
+const handleKeyDown = (event: KeyboardEvent) => {
+  if (event.repeat) return;
+  const midiNote = keyboardMap[event.key.toLowerCase()];
+  if (midiNote !== undefined && !pressedKeys.has(event.key.toLowerCase())) {
+    press(midiNote);
+    pressedKeys.add(event.key.toLowerCase());
+  }
+};
+
+const handleKeyUp = (event: KeyboardEvent) => {
+  const midiNote = keyboardMap[event.key.toLowerCase()];
+  if (midiNote !== undefined && pressedKeys.has(event.key.toLowerCase())) {
+    release(midiNote);
+    pressedKeys.delete(event.key.toLowerCase());
+  }
+};
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeyDown);
+  window.addEventListener('keyup', handleKeyUp);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleKeyDown);
+  window.removeEventListener('keyup', handleKeyUp);
+});
 </script>
 
 <template>

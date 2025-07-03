@@ -14,7 +14,7 @@
   "dependencies": {
     "pinia": "^3.0.3",
     "tone": "^15.1.22",
-    "vexflow": "^5.0.0",
+    "vexflow": "^4.2.0",
     "vue": "^3.5.17"
   },
   "devDependencies": {
