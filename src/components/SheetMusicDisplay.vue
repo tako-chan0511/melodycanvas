@@ -1,40 +1,39 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { NoteEvent } from '@/types/note';
-import { drawVexFlowScore } from '@/composables/useSheetMusic'; // 譜面描画関数をインポート
+import { drawVexFlowScore } from '@/composables/useSheetMusic';
 
 const props = defineProps<{
-  notes: NoteEvent[]; // 表示する音符データを受け取る
+  notes: NoteEvent[];
 }>();
 
 const sheetMusicContainer = ref<HTMLElement | null>(null);
 
-// propのnotesが変更されたら譜面を再描画
 watch(() => props.notes, (newNotes) => {
   if (sheetMusicContainer.value) {
-    drawVexFlowScore(newNotes, sheetMusicContainer.value);
+    // ★修正: 型アサーションを追加
+    drawVexFlowScore(newNotes, sheetMusicContainer.value as HTMLDivElement);
   }
-}, { deep: true, immediate: true }); // 初期表示と配列の中身変更を監視
+}, { deep: true, immediate: true });
 
-// コンポーネントがマウントされた時に初期描画
+const handleResize = () => {
+  if (sheetMusicContainer.value) {
+    // ★修正: 型アサーションを追加
+    drawVexFlowScore(props.notes, sheetMusicContainer.value as HTMLDivElement);
+  }
+};
+
 onMounted(() => {
   if (sheetMusicContainer.value) {
-    drawVexFlowScore(props.notes, sheetMusicContainer.value);
+    // ★修正: 型アサーションを追加
+    drawVexFlowScore(props.notes, sheetMusicContainer.value as HTMLDivElement);
   }
-  // ウィンドウサイズ変更時に譜面をリサイズするイベントリスナーを追加
   window.addEventListener('resize', handleResize);
 });
 
 onBeforeUnmount(() => {
-  // コンポーネントがアンマウントされるときにイベントリスナーを削除
   window.removeEventListener('resize', handleResize);
 });
-
-const handleResize = () => {
-  if (sheetMusicContainer.value) {
-    drawVexFlowScore(props.notes, sheetMusicContainer.value);
-  }
-};
 </script>
 
 <template>
@@ -47,6 +46,7 @@ const handleResize = () => {
     </div>
   </div>
 </template>
+
 
 <style scoped>
 .sheet-music-display {
