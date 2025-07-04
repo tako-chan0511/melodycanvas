@@ -1,63 +1,118 @@
-<script setup lang="ts">
-import { NoteEvent } from '@/types/note'; // NoteEvent型をインポート
-
-// 親コンポーネントからrecordedNotesを受け取る
-const props = defineProps<{
-  recordedNotes: NoteEvent[];
-}>();
-
-// ダウンロード機能はまだ未実装ですが、ここにロジックを追加します
-const downloadAudio = () => {
-  alert('音声ダウンロード機能はまだ実装されていません！');
-  // ここにuseAudioの録音出力ダウンロードロジックを追加
-};
-
-const downloadMidi = () => {
-  alert('MIDIダウンロード機能はまだ実装されていません！');
-  // ここにmidi-writer-jsを使ったMIDIダウンロードロジックを追加
-};
-</script>
-
 <template>
   <div class="download-options">
-    <h3>ダウンロード</h3>
-    <button @click="downloadAudio" :disabled="props.recordedNotes.length === 0">音声 (WAV)</button>
-    <button @click="downloadMidi" :disabled="props.recordedNotes.length === 0">MIDI (MID)</button>
+    <button
+      class="json-btn"
+      :disabled="!hasNotes"
+      @click="downloadJSON"
+    >
+      JSONダウンロード
+    </button>
+    <button
+      class="midi-btn"
+      :disabled="!hasNotes"
+      @click="downloadMIDI"
+    >
+      MIDIダウンロード
+    </button>
   </div>
 </template>
 
-<style scoped>
-.download-options {
-  margin-top: 20px;
-  padding: 15px;
-  border: 1px solid #eee;
-  border-radius: 8px;
-  background-color: #f9f9f9;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  align-items: center;
-  width: 90%;
-  max-width: 800px;
+<script setup lang="ts">
+import { computed } from 'vue'
+import { useMusicStore } from '@/stores/musicStore'
+import type { NoteEvent } from '@/types/note'
+import { Midi } from '@tonejs/midi'
+
+const store = useMusicStore()
+
+// ノートが 1 件以上あるときだけ有効
+const hasNotes = computed(() => store.recordedNotes.length > 0)
+
+/** JSONダウンロード */
+function downloadJSON() {
+  const data = {
+    notes: store.recordedNotes,
+    tempo: store.playbackRate,
+  }
+  const json = JSON.stringify(data, null, 2)
+  const blob = new Blob([json], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a') as HTMLAnchorElement
+  a.href = url
+  a.download = 'melodycanvas_score.json'
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
 }
 
-button {
-  padding: 8px 15px;
-  background-color: #2196F3; /* Blue */
-  color: white;
+/** MIDIダウンロード */
+function downloadMIDI() {
+  // 新しい MIDI インスタンスを作成
+  const midi = new Midi()
+
+  // テンポをヘッダー側で設定 (120 BPM を基準に、ユーザーの再生速度を反映)
+  midi.header.setTempo(120 * store.playbackRate)
+
+  // トラックを追加
+  const track = midi.addTrack()
+
+  // 録音されたノートをシーケンスとしてトラックに登録
+  store.recordedNotes.forEach((n: NoteEvent) => {
+    // midiNote < 0 は休符として無視
+    if (n.midiNote < 0) return
+
+    const startSeconds = n.startTime / 1000
+    const durSeconds = n.duration / 1000
+
+    track.addNote({
+      midi: n.midiNote,
+      time: startSeconds,
+      duration: durSeconds,
+      velocity: n.velocity / 127,
+    })
+  })
+
+  // バイナリ配列に変換して Blob 化
+  const bytes = midi.toArray()     // Uint8Array
+  const blob = new Blob([bytes], { type: 'audio/midi' })
+  const url = URL.createObjectURL(blob)
+
+  // ダウンロード用リンクを作ってクリック
+  const a = document.createElement('a') as HTMLAnchorElement
+  a.href = url
+  a.download = 'melodycanvas_score.mid'
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+</script>
+
+<style scoped>
+.download-options {
+  margin: 20px 0;
+  text-align: center;
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+.download-options button {
+  padding: 8px 16px;
+  font-size: 1rem;
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 0.9rem;
-  transition: background-color 0.3s ease;
+  background-color: #007bff;
+  color: white;
+  transition: background-color 0.2s;
 }
-
-button:hover:not(:disabled) {
-  background-color: #1976D2;
-}
-
-button:disabled {
-  background-color: #cccccc;
+.download-options button:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
+}
+.download-options .json-btn:hover:not(:disabled),
+.download-options .midi-btn:hover:not(:disabled) {
+  background-color: #0056b3;
 }
 </style>

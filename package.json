@@ -12,6 +12,7 @@
     "deploy": "gh-pages -d dist"
   },
   "dependencies": {
+    "@tonejs/midi": "^2.0.28",
     "pinia": "^3.0.3",
     "tone": "^15.1.22",
     "vexflow": "^4.2.0",
