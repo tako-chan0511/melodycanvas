@@ -238,61 +238,54 @@ export const useMusicStore = defineStore('music', {
       stopNote(midiNote);
     },
 
-    async playSequence() {
-      if (!this.canPlay) {
-          console.warn('Cannot play sequence: App is not ready for playback or no notes recorded.');
-          return;
+async playSequence() {
+  if (!this.canPlay) return;
+  this.appState = 'initializing_audio';
+  try {
+    await initAudioContext();
+    this.appState = 'playing';
+    this.currentPlaybackTimeoutIds = [];
+
+    // --- ここから変更部分 ---
+    // 1. 録音順のまま取得
+    const seq = [...this.recordedNotes];
+    // 2. cursor を 0 から進めてゆく
+    let cursor = 0;
+    seq.forEach(note => {
+      // ノートオン
+      const onId = setTimeout(() => {
+        if (this.isPlaying && note.midiNote > -1) {
+          playNote(note.midiNote, note.velocity);
+        }
+      }, cursor);
+      this.currentPlaybackTimeoutIds.push(onId);
+
+      // ノートオフ
+      const offId = setTimeout(() => {
+        if (this.isPlaying && note.midiNote > -1) {
+          stopNote(note.midiNote);
+        }
+      }, cursor + note.duration);
+      this.currentPlaybackTimeoutIds.push(offId);
+
+      // 次の cursor を進める
+      cursor += note.duration;
+    });
+
+    // 終了検知（最後の音が消えたあと）
+    const endId = setTimeout(() => {
+      if (this.isPlaying) {
+        this.appState = 'idle';
       }
-      if (this.recordedNotes.length === 0) {
-          alert('再生するノートがありません。'); // UIから弾かれるはずだが念のため
-          return;
-      }
-
-      this.appState = 'initializing_audio'; // 再生前も初期化を待つ状態
-      try {
-          await initAudioContext(); // AudioContextとSynthの初期化を待つ
-          console.log("AudioContext initialized for playback.");
-
-          this.appState = 'playing'; // 再生中状態に遷移
-          console.log('再生を開始しました。');
-          this.currentPlaybackTimeoutIds = []; // 既存のタイムアウトIDをクリア
-
-          const sortedNotes = [...this.recordedNotes].sort((a, b) => a.startTime - b.startTime);
-
-          sortedNotes.forEach(async note => {
-              // note.startTime は相対時間なので、setTimeout でスケジュール
-              const noteOnTimeoutId = setTimeout(async () => {
-                  // 音を鳴らす前にまだアプリが再生状態か確認 (stopPlaybackでキャンセルされる場合)
-                  if (this.isPlaying) {
-                      await playNote(note.midiNote, note.velocity);
-                      const noteOffTimeoutId = setTimeout(() => {
-                          if (this.isPlaying) { // まだ再生状態か確認
-                             stopNote(note.midiNote);
-                          }
-                      }, note.duration);
-                      this.currentPlaybackTimeoutIds.push(noteOffTimeoutId);
-                  }
-              }, note.startTime);
-              this.currentPlaybackTimeoutIds.push(noteOnTimeoutId);
-          });
-
-          // 全てのノートが鳴り終わる時間を計算して、再生終了を検知
-          const lastNoteEndTime = Math.max(0, ...sortedNotes.map(note => note.startTime + note.duration)); // ノートがない場合も考慮
-          const endPlaybackTimeoutId = setTimeout(() => {
-            if (this.isPlaying) { // 途中で停止されていないか確認
-                this.appState = 'idle'; // アイドル状態に遷移
-                console.log('再生が終了しました。');
-            }
-            this.currentPlaybackTimeoutIds = [];
-          }, lastNoteEndTime + 100); // 最後の音が完全に消えるまで少し待つ
-          this.currentPlaybackTimeoutIds.push(endPlaybackTimeoutId);
-
-      } catch (error) {
-          console.error("Failed to start playback setup:", error);
-          alert("再生の準備に失敗しました。ブラウザのコンソールを確認してください。");
-          this.appState = 'idle'; // エラー時はアイドル状態に戻す
-      }
-    },
+      this.currentPlaybackTimeoutIds = [];
+    }, cursor + 100);
+    this.currentPlaybackTimeoutIds.push(endId);
+    // --- ここまで変更部分 ---
+  } catch (error) {
+    console.error("再生の準備に失敗:", error);
+    this.appState = 'idle';
+  }
+},
 
     stopPlayback() {
       if (!this.canStopPlayback) {
