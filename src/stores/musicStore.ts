@@ -110,6 +110,36 @@ export const useMusicStore = defineStore('music', {
       }
     },
 
+/**
+     * 手動で追加するノート/休符を「選択ノートの次」または「末尾」に挿入する
+     * @param event midiNote===-1 の場合は休符扱い
+     */
+    addManualNoteEvent(event: Omit<NoteEvent, 'id'>) {
+      // 1) 新しい一意の ID を作成
+      const id = `note-${this.nextNoteId++}`;
+
+      // 2) 挿入位置を決める:
+      //    選択中ノートがあれば、そのインデックス+1
+      //    なければ末尾
+      const idx = this.recordedNotes.findIndex(n => n.id === this.selectedNoteId);
+      const insertPos = idx !== -1 ? idx + 1 : this.recordedNotes.length;
+
+      // 3) NoteEvent を配列に splice で挿入
+      this.recordedNotes.splice(
+        insertPos,
+        0,
+        { id, ...event }
+      );
+
+      // 選択を新しいノートに切り替えて UI に反映
+      this.selectedNoteId = id;
+    },
+
+    // …残りのアクション…
+  
+
+
+
     deleteScore(scoreId: string) {
       if (!confirm('この演奏データを本当に削除しますか？')) {
         return;
