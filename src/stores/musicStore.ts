@@ -10,10 +10,10 @@ const LOCAL_STORAGE_KEY = 'melodyCanvasScores';
 
 // 保存される演奏データの型定義
 interface SavedScore {
-  id: string; // ユニークなID
-  name: string; // ユーザーが付ける名前
+  id: string;        // ユニークなID
+  name: string;      // ユーザーが付ける名前
   timestamp: number; // 保存日時 (ソート用)
-  notes: NoteEvent[]; // 演奏データ
+  notes: NoteEvent[];// 演奏データ
 }
 
 // アプリケーションの主要な状態を列挙
@@ -21,69 +21,76 @@ type AppState = 'idle' | 'initializing_audio' | 'recording' | 'playing' | 'pause
 
 export const useMusicStore = defineStore('music', {
   state: () => ({
+    // 録音・編集済みノート
     recordedNotes: [] as NoteEvent[],
-    // ★修正: isRecording, isPlaying などのフラグを AppState に集約
-    appState: 'idle' as AppState, // 現在の状態
-    
+    // 現在のアプリ状態
+    appState: 'idle' as AppState,
+    // 録音開始時刻
     recordingStartTime: 0,
+    // 次に割り振るノートIDのカウンター
     nextNoteId: 0,
+    // 再生タイムアウトID一覧
     currentPlaybackTimeoutIds: [] as number[],
+    // 現在選択中のノートID
     selectedNoteId: null as string | null,
+    // ローカルストレージから読み込んだ保存済スコア一覧
     savedScores: [] as SavedScore[],
+    // 現在読み込んでいるスコアID
     currentLoadedScoreId: null as string | null,
+    // 再生速度 (1.0 = 100%)
+    playbackRate: 1.0,
   }),
   getters: {
-    isIdle: (state) => state.appState === 'idle',
-    isRecording: (state) => state.appState === 'recording',
-    isPlaying: (state) => state.appState === 'playing',
-    isPlaybackPaused: (state) => state.appState === 'paused_playback',
-    isInitializingAudio: (state) => state.appState === 'initializing_audio',
-    canStartRecording: (state) => state.appState === 'idle',
-    canStopRecording: (state) => state.appState === 'recording',
-    canPlay: (state) => (state.appState === 'idle' || state.appState === 'paused_playback') && state.recordedNotes.length > 0,
-    canPause: (state) => state.appState === 'playing',
-    canStopPlayback: (state) => state.appState === 'playing' || state.appState === 'paused_playback',
+    isIdle:           state => state.appState === 'idle',
+    isRecording:      state => state.appState === 'recording',
+    isPlaying:        state => state.appState === 'playing',
+    isPlaybackPaused: state => state.appState === 'paused_playback',
+    isInitializing:   state => state.appState === 'initializing_audio',
+    canStartRecording:  state => state.appState === 'idle',
+    canStopRecording:   state => state.appState === 'recording',
+    canPlay:            state => (state.appState === 'idle' || state.appState === 'paused_playback') && state.recordedNotes.length > 0,
+    canPause:           state => state.appState === 'playing',
+    canStopPlayback:    state => state.appState === 'playing' || state.appState === 'paused_playback',
   },
   actions: {
     // --- 永続化関連 ---
     loadAllScores() {
       try {
-        const storedScores = localStorage.getItem(LOCAL_STORAGE_KEY);
-        if (storedScores) {
-          this.savedScores = JSON.parse(storedScores);
+        const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (stored) {
+          this.savedScores = JSON.parse(stored);
           this.savedScores.sort((a, b) => b.timestamp - a.timestamp);
-          console.log('Scores loaded from LocalStorage:', this.savedScores.length);
+          console.log('Scores loaded:', this.savedScores.length);
         }
       } catch (e) {
-        console.error('Failed to load scores from LocalStorage:', e);
+        console.error('Failed to load scores:', e);
         this.savedScores = [];
       }
     },
 
     saveCurrentScore(scoreName: string) {
       if (this.recordedNotes.length === 0) {
-        alert('保存する演奏がありません。鍵盤を弾いてください。');
+        alert('保存する演奏がありません。');
         return;
       }
       if (!scoreName.trim()) {
-        alert('保存する演奏の名前を入力してください。');
+        alert('演奏名を入力してください。');
         return;
       }
 
       const newScore: SavedScore = {
-        id: Date.now().toString(),
-        name: scoreName.trim(),
+        id:        Date.now().toString(),
+        name:      scoreName.trim(),
         timestamp: Date.now(),
-        notes: JSON.parse(JSON.stringify(this.recordedNotes)),
+        notes:     JSON.parse(JSON.stringify(this.recordedNotes)),
       };
 
-      const existingIndex = this.savedScores.findIndex(s => s.name === newScore.name);
-      if (existingIndex !== -1) {
-        this.savedScores[existingIndex] = newScore;
+      const idx = this.savedScores.findIndex(s => s.name === newScore.name);
+      if (idx !== -1) {
+        this.savedScores[idx] = newScore;
       } else {
         this.savedScores.push(newScore);
       }
-
       this.savedScores.sort((a, b) => b.timestamp - a.timestamp);
       this.saveScoresToLocalStorage();
       alert(`演奏「${newScore.name}」を保存しました！`);
@@ -92,233 +99,185 @@ export const useMusicStore = defineStore('music', {
 
     loadScore(scoreId: string) {
       if (this.appState !== 'idle' && this.appState !== 'paused_playback') {
-          alert('現在録音中または再生中です。操作を完了してから読み込んでください。');
-          return;
-      }
-      const scoreToLoad = this.savedScores.find(s => s.id === scoreId);
-      if (scoreToLoad) {
-        if (this.recordedNotes.length > 0 && !this.currentLoadedScoreId && !confirm('現在の編集は保存されていません。読み込みますか？')) {
-          return; // 未保存の変更がある場合は確認
-        }
-        this.recordedNotes = JSON.parse(JSON.stringify(scoreToLoad.notes));
-        this.currentLoadedScoreId = scoreToLoad.id;
-        this.selectedNoteId = null;
-        this.appState = 'idle'; // 読み込み後はidle状態に
-        alert(`演奏「${scoreToLoad.name}」を読み込みました。`);
-      } else {
-        alert('指定された演奏が見つかりません。');
-      }
-    },
-
-/**
-     * 手動で追加するノート/休符を「選択ノートの次」または「末尾」に挿入する
-     * @param event midiNote===-1 の場合は休符扱い
-     */
-    addManualNoteEvent(event: Omit<NoteEvent, 'id'>) {
-      // 1) 新しい一意の ID を作成
-      const id = `note-${this.nextNoteId++}`;
-
-      // 2) 挿入位置を決める:
-      //    選択中ノートがあれば、そのインデックス+1
-      //    なければ末尾
-      const idx = this.recordedNotes.findIndex(n => n.id === this.selectedNoteId);
-      const insertPos = idx !== -1 ? idx + 1 : this.recordedNotes.length;
-
-      // 3) NoteEvent を配列に splice で挿入
-      this.recordedNotes.splice(
-        insertPos,
-        0,
-        { id, ...event }
-      );
-
-      // 選択を新しいノートに切り替えて UI に反映
-      this.selectedNoteId = id;
-    },
-
-    // …残りのアクション…
-  
-
-
-
-    deleteScore(scoreId: string) {
-      if (!confirm('この演奏データを本当に削除しますか？')) {
+        alert('録音中または再生中は読み込めません。');
         return;
       }
+      const sc = this.savedScores.find(s => s.id === scoreId);
+      if (!sc) {
+        alert('演奏データが見つかりません。');
+        return;
+      }
+      if (this.recordedNotes.length > 0 && !this.currentLoadedScoreId) {
+        if (!confirm('未保存の変更があります。読み込みますか？')) {
+          return;
+        }
+      }
+      this.recordedNotes       = JSON.parse(JSON.stringify(sc.notes));
+      this.currentLoadedScoreId = sc.id;
+      this.selectedNoteId       = null;
+      this.appState             = 'idle';
+      alert(`演奏「${sc.name}」を読み込みました。`);
+    },
+
+    deleteScore(scoreId: string) {
+      if (!confirm('本当に削除しますか？')) return;
       this.savedScores = this.savedScores.filter(s => s.id !== scoreId);
       this.saveScoresToLocalStorage();
       if (this.currentLoadedScoreId === scoreId) {
         this.currentLoadedScoreId = null;
         this.recordedNotes = [];
         this.selectedNoteId = null;
-        this.appState = 'idle'; // 削除後はidle状態に
+        this.appState = 'idle';
       }
-      alert('演奏データを削除しました。');
+      alert('演奏を削除しました。');
     },
 
     saveScoresToLocalStorage() {
       try {
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(this.savedScores));
-        console.log('Scores saved to LocalStorage.');
+        console.log('Scores saved.');
       } catch (e) {
-        console.error('Failed to save scores to LocalStorage:', e);
-        alert('データの保存に失敗しました。ブラウザのストレージが上限に達している可能性があります。');
+        console.error('Failed to save scores:', e);
+        alert('保存に失敗しました。ストレージ容量をご確認ください。');
       }
     },
 
-    // --- 状態遷移と録音/再生ロジック ---
+    /**
+     * 手動で追加するノート／休符を、選択ノートの次または末尾に挿入
+     * midiNote === -1 の場合は休符扱い
+     */
+    addManualNoteEvent(event: Omit<NoteEvent, 'id'>) {
+      const id = `note-${this.nextNoteId++}`;
+      const idx = this.recordedNotes.findIndex(n => n.id === this.selectedNoteId);
+      const pos = idx !== -1 ? idx + 1 : this.recordedNotes.length;
+      this.recordedNotes.splice(pos, 0, { id, ...event });
+      this.selectedNoteId = id;
+    },
+
+    // --- 録音・再生ロジック ---
     async startRecording() {
-      if (!this.canStartRecording) {
-        console.warn('Cannot start recording: App is not idle.');
-        return;
-      }
-      this.appState = 'initializing_audio'; // 初期化中状態に遷移
-
+      if (!this.canStartRecording) return;
+      this.appState = 'initializing_audio';
       try {
-        await initAudioContext(); // AudioContextとSynthの初期化を待つ
-        console.log("AudioContext initialized, proceeding to recording setup.");
-
-        this.recordedNotes = []; // 新規録音開始時はクリア
+        await initAudioContext();
+        this.recordedNotes      = [];
         this.currentLoadedScoreId = null;
-        this.selectedNoteId = null;
+        this.selectedNoteId       = null;
         this.recordingStartTime = performance.now();
-        this.nextNoteId = 0;
-
-        this.appState = 'recording'; // 録音状態に遷移
-        console.log('録音を開始しました。');
-      } catch (error) {
-        console.error("Failed to start recording setup:", error);
-        alert("録音の準備に失敗しました。ブラウザのコンソールを確認してください。");
-        this.appState = 'idle'; // エラー時はアイドル状態に戻す
+        this.nextNoteId         = 0;
+        this.appState           = 'recording';
+        console.log('録音開始');
+      } catch (e) {
+        console.error('録音準備失敗', e);
+        alert('録音の準備に失敗しました。');
+        this.appState = 'idle';
       }
     },
 
     stopRecording() {
-      if (!this.canStopRecording) {
-        console.warn('Cannot stop recording: App is not in recording state.');
-        return;
-      }
-      this.appState = 'idle'; // アイドル状態に遷移
-      console.log('録音を停止しました。', this.recordedNotes);
+      if (!this.canStopRecording) return;
+      this.appState = 'idle';
+      console.log('録音停止', this.recordedNotes);
     },
 
     async addNote(midiNote: number, velocity: number) {
-      // 録音中、またはアイドル状態（かつ譜面表示目的で鍵盤が叩かれた場合）に音を出す
-      // 録音中でない場合でも音は鳴らすが、データは記録しない
       if (this.isRecording) {
-        const currentTime = performance.now();
-        const startTime = currentTime - this.recordingStartTime;
+        const now = performance.now();
         this.recordedNotes.push({
-          id: `note-${this.nextNoteId++}`,
+          id:        `note-${this.nextNoteId++}`,
           midiNote,
           velocity,
-          startTime,
-          duration: 0, // 音が離されるまでdurationは0
+          startTime: now - this.recordingStartTime,
+          duration:  0,
         });
       }
-      // どの状態でも鍵盤が叩かれたら音は鳴らす
-      // ただし、initializing_audio 状態では initAudioContext() が走るので待つ
       if (this.appState === 'initializing_audio') {
-          await initAudioContext(); // initAudioContext は冪等なので複数回呼ばれても安全
+        await initAudioContext();
       }
       await playNote(midiNote, velocity);
     },
 
     releaseNote(midiNote: number) {
-      // 録音中の場合のみ記録
       if (this.isRecording) {
-        const currentTime = performance.now();
-        const lastNoteIndex = this.recordedNotes.findIndex(
-          note => note.midiNote === midiNote && note.duration === 0
-        );
-        if (lastNoteIndex !== -1) {
-          this.recordedNotes[lastNoteIndex].duration = currentTime - (this.recordedNotes[lastNoteIndex].startTime + this.recordingStartTime);
+        const now = performance.now();
+        const i = this.recordedNotes.findIndex(n => n.midiNote === midiNote && n.duration === 0);
+        if (i !== -1) {
+          const note = this.recordedNotes[i];
+          note.duration = now - (note.startTime + this.recordingStartTime);
         }
       }
-      // どの状態でも鍵盤が離されたら音を止める
       stopNote(midiNote);
     },
 
-async playSequence() {
-  if (!this.canPlay) return;
-  this.appState = 'initializing_audio';
-  try {
-    await initAudioContext();
-    this.appState = 'playing';
-    this.currentPlaybackTimeoutIds = [];
+    async playSequence() {
+      if (!this.canPlay) return;
+      this.appState = 'initializing_audio';
+      try {
+        await initAudioContext();
+        this.appState = 'playing';
+        this.currentPlaybackTimeoutIds = [];
 
-    // --- ここから変更部分 ---
-    // 1. 録音順のまま取得
-    const seq = [...this.recordedNotes];
-    // 2. cursor を 0 から進めてゆく
-    let cursor = 0;
-    seq.forEach(note => {
-      // ノートオン
-      const onId = setTimeout(() => {
-        if (this.isPlaying && note.midiNote > -1) {
-          playNote(note.midiNote, note.velocity);
+        let cursor = 0;
+        for (const note of this.recordedNotes) {
+          const delayOn  = cursor / this.playbackRate;
+          const delayOff = (cursor + note.duration) / this.playbackRate;
+
+          const onId = setTimeout(() => {
+            if (this.isPlaying && note.midiNote > -1) {
+              playNote(note.midiNote, note.velocity);
+            }
+          }, delayOn);
+          this.currentPlaybackTimeoutIds.push(onId);
+
+          const offId = setTimeout(() => {
+            if (this.isPlaying && note.midiNote > -1) {
+              stopNote(note.midiNote);
+            }
+          }, delayOff);
+          this.currentPlaybackTimeoutIds.push(offId);
+
+          cursor += note.duration;
         }
-      }, cursor);
-      this.currentPlaybackTimeoutIds.push(onId);
 
-      // ノートオフ
-      const offId = setTimeout(() => {
-        if (this.isPlaying && note.midiNote > -1) {
-          stopNote(note.midiNote);
-        }
-      }, cursor + note.duration);
-      this.currentPlaybackTimeoutIds.push(offId);
+        const endId = setTimeout(() => {
+          if (this.isPlaying) {
+            this.appState = 'idle';
+          }
+          this.currentPlaybackTimeoutIds = [];
+        }, cursor / this.playbackRate + 100);
+        this.currentPlaybackTimeoutIds.push(endId);
 
-      // 次の cursor を進める
-      cursor += note.duration;
-    });
-
-    // 終了検知（最後の音が消えたあと）
-    const endId = setTimeout(() => {
-      if (this.isPlaying) {
+      } catch (e) {
+        console.error('再生準備失敗', e);
         this.appState = 'idle';
       }
-      this.currentPlaybackTimeoutIds = [];
-    }, cursor + 100);
-    this.currentPlaybackTimeoutIds.push(endId);
-    // --- ここまで変更部分 ---
-  } catch (error) {
-    console.error("再生の準備に失敗:", error);
-    this.appState = 'idle';
-  }
-},
+    },
 
     stopPlayback() {
-      if (!this.canStopPlayback) {
-        console.warn('Cannot stop playback: App is not in playing or paused state.');
-        return;
-      }
-      this.currentPlaybackTimeoutIds.forEach(id => clearTimeout(id)); // 全てのスケジュールをクリア
+      if (!this.canStopPlayback) return;
+      this.currentPlaybackTimeoutIds.forEach(id => clearTimeout(id));
       this.currentPlaybackTimeoutIds = [];
-      // 鳴っている音があれば全て強制停止するロジックをuseAudioに追加することも可能 (例: stopAllNotes)
-      this.appState = 'idle'; // アイドル状態に遷移
-      console.log('再生を停止しました。');
+      this.appState = 'idle';
+      console.log('再生停止');
     },
 
     // --- 編集関連 ---
     selectNote(noteId: string | null) {
       this.selectedNoteId = noteId;
-      console.log('Selected Note ID:', noteId);
+      console.log('Selected:', noteId);
     },
 
     updateNote(noteId: string, updates: Partial<NoteEvent>) {
-      const noteIndex = this.recordedNotes.findIndex(n => n.id === noteId);
-      if (noteIndex !== -1) {
-        this.recordedNotes[noteIndex] = {
-          ...this.recordedNotes[noteIndex],
-          ...updates,
-        };
-        console.log(`Note ${noteId} updated:`, this.recordedNotes[noteIndex]);
+      const i = this.recordedNotes.findIndex(n => n.id === noteId);
+      if (i !== -1) {
+        this.recordedNotes[i] = { ...this.recordedNotes[i], ...updates };
+        console.log('Note updated:', this.recordedNotes[i]);
       }
     },
 
     deleteNote(id: string) {
       this.recordedNotes = this.recordedNotes.filter(n => n.id !== id);
-      console.log(`ノート ${id} を削除しました。`);
-    }
-  },
+      console.log('Note deleted:', id);
+    },
+  }
 });
