@@ -2,12 +2,21 @@
   <div class="note-editor">
     <h3>ノート編集</h3>
     <div v-if="selectedNote">
+      <!-- 音程編集 -->
       <div class="field">
         <label for="pitch-select">音程 (Note):</label>
-        <select id="pitch-select" v-model="editNoteName">
-          <option v-for="name in noteOptions" :key="name" :value="name">{{ name }}</option>
+        <select
+          id="pitch-select"
+          v-model="editNoteName"
+          :disabled="isRest"
+        >
+          <option v-for="name in noteOptions" :key="name" :value="name">
+            {{ name }}
+          </option>
         </select>
       </div>
+
+      <!-- 長さ／休符編集 -->
       <div class="field">
         <label for="duration-select">長さ (Duration):</label>
         <select id="duration-select" v-model="editDurationType">
@@ -16,48 +25,77 @@
           <option value="q">四分音符 (Quarter)</option>
           <option value="8">八分音符 (Eighth)</option>
           <option value="16">十六分音符 (Sixteenth)</option>
+          <option value="wr">全休符 (Whole Rest)</option>
+          <option value="hr">二分休符 (Half Rest)</option>
+          <option value="qr">四分休符 (Quarter Rest)</option>
+          <option value="8r">八分休符 (Eighth Rest)</option>
+          <option value="16r">十六分休符 (16th Rest)</option>
         </select>
       </div>
+
+      <!-- 更新／削除 -->
       <div class="actions">
         <button class="update" @click="applyEdit">更新</button>
         <button class="delete" @click="deleteNote">削除</button>
       </div>
     </div>
-    <p v-else class="no-selection">譜面上の音符をクリックして選択してください。</p>
+    <p v-else class="no-selection">
+      譜面上の音符をクリックして選択してください。
+    </p>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
-import { useMusicStore } from '@/stores/musicStore'
-import * as Tone from 'tone'
-import type { NoteEvent } from '@/types/note'
+import { ref, computed, watch } from "vue"
+import { useMusicStore } from "@/stores/musicStore"
+import * as Tone from "tone"
+import type { NoteEvent } from "@/types/note"
 
 const store = useMusicStore()
 
-// 選択中のノートを取得
+// 選択中のノート
 const selectedNote = computed<NoteEvent | undefined>(() => {
-  return store.recordedNotes.find(n => n.id === store.selectedNoteId)
+  return store.recordedNotes.find((n) => n.id === store.selectedNoteId)
 })
 
-// エディット用ローカル state
-const editNoteName = ref<string>('')
-const editDurationType = ref<'w'|'h'|'q'|'8'|'16'>('q')
+// 編集用ローカル state
+const editNoteName = ref<string>("")
+const editDurationType = ref<"w" | "h" | "q" | "8" | "16" | "wr" | "hr" | "qr" | "8r" | "16r">("q")
+const isRest = computed(() => editDurationType.value.endsWith('r'))
 
 // 選択ノートが変わったら form に反映
-watch(selectedNote, (note) => {
-  if (note) {
-    const name = Tone.Midi(note.midiNote).toNote()
-    editNoteName.value = name
-    // duration をタイプに変換
-    const d = note.duration
-    const q = 500
-    if (d >= q * 1.5) editDurationType.value = 'h'
-    else if (d >= q * 0.7) editDurationType.value = 'q'
-    else if (d >= q * 0.3) editDurationType.value = '8'
-    else editDurationType.value = '16'
-  }
-}, { immediate: true })
+watch(
+  selectedNote,
+  (note) => {
+    if (!note) return
+    // 休符かどうか
+    if (note.isRest) {
+      // 休符の場合は音程選択無効
+      editNoteName.value = ''
+      // durationType を復元
+      // duration ms から判定（単純化）
+      const d = note.duration
+      const q = 500
+      if (d >= q * 3) editDurationType.value = 'wr'
+      else if (d >= q * 1.5) editDurationType.value = 'hr'
+      else if (d >= q * 0.7) editDurationType.value = 'qr'
+      else if (d >= q * 0.3) editDurationType.value = '8r'
+      else editDurationType.value = '16r'
+    } else {
+      // 音符の場合
+      const name = Tone.Midi(note.midiNote).toNote()
+      editNoteName.value = name
+      // duration をタイプに変換
+      const d = note.duration
+      const q = 500
+      if (d >= q * 1.5) editDurationType.value = "h"
+      else if (d >= q * 0.7) editDurationType.value = "q"
+      else if (d >= q * 0.3) editDurationType.value = "8"
+      else editDurationType.value = "16"
+    }
+  },
+  { immediate: true }
+)
 
 // 音名リスト (C3〜C6)
 const noteOptions = computed<string[]>(() => {
@@ -71,19 +109,27 @@ const noteOptions = computed<string[]>(() => {
 // 更新
 function applyEdit() {
   if (!selectedNote.value) return
-  // 音程→midi
-  const midi = Tone.Midi(editNoteName.value).toMidi()
+  // 休符判定
+  const rest = editDurationType.value.endsWith('r')
+  // midiNote は休符時 -1
+  const midi = rest ? -1 : Tone.Midi(editNoteName.value).toMidi()
   // durationType→ms
   const q = 500
   let dur = q
-  switch (editDurationType.value) {
-    case 'w': dur = q * 4; break
-    case 'h': dur = q * 2; break
-    case 'q': dur = q; break
-    case '8': dur = q / 2; break
-    case '16': dur = q / 4; break
+  const baseType = editDurationType.value.replace('r','')
+  switch (baseType) {
+    case "w": dur = q * 4; break
+    case "h": dur = q * 2; break
+    case "q": dur = q;     break
+    case "8": dur = q / 2; break
+    case "16":dur = q / 4; break
   }
-  store.updateNote(selectedNote.value.id, { midiNote: midi, duration: dur })
+  // ストア更新
+  store.updateNote(selectedNote.value.id, {
+    midiNote: midi,
+    duration: dur,
+    isRest: rest
+  })
 }
 
 // 削除
@@ -121,6 +167,9 @@ function deleteNote() {
   padding: 4px 8px;
   border: 1px solid #ccc;
   border-radius: 4px;
+}
+.field select:disabled {
+  background: #eee;
 }
 .actions {
   margin-top: 12px;
