@@ -57,8 +57,26 @@ const getBlackKeyLeftPosition = (blackMidiNote: number) => {
 
     let leftOffset = baseWhiteKeyAbsoluteLeft + whiteKeyWidth - (blackKeyWidth / 2);
 
-    // ★重要: ここにあった switch 文（fineTuneOffset の計算）はすべて削除されています。
-    // その結果、画像で黒鍵が左にずれていた状態でした。
+    // ★fineTuneOffset の微調整値（画像と目視で調整してください）
+    switch (noteInOctave) {
+        case 1: // C# (Cの右)
+            leftOffset -= 6; // 左に少し寄せる
+            break;
+        case 3: // D# (Dの右)
+            leftOffset += 4; // 右に少し寄せる
+            break;
+        case 6: // F# (Fの右)
+            leftOffset -= 6; // 左に少し寄せる
+            break;
+        case 8: // G# (Gの右)
+            leftOffset += 4; // 右に少し寄せる
+            break;
+        case 10: // A# (Aの右)
+            leftOffset += 4; // 右に少し寄せる
+            break;
+        default:
+            break;
+    }
 
     return leftOffset;
 };

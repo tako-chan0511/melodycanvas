@@ -1,95 +1,81 @@
 // src/composables/useSheetMusic.ts
-import {
-  Renderer, Stave, StaveNote, Formatter, Voice,
-  Accidental,
-  Stem,
-} from 'vexflow';
-
-import { NoteEvent } from '@/types/note';
-import * as Tone from 'tone';
+import { Renderer, Stave, Formatter, Voice, StaveNote, Accidental, Stem } from 'vexflow'
+import type { NoteEvent } from '@/types/note'
+import * as Tone from 'tone'
 
 /**
- * NoteEventからVexFlowのStaveNoteに変換するヘルパー
- * VexFlow v4.2.0対応
+ * NoteEvent を VexFlow の StaveNote に変換
  */
 function convertNoteEventToVexFlowNote(noteEvent: NoteEvent): StaveNote {
-    const noteName = Tone.Midi(noteEvent.midiNote).toNote();
-    let vexFlowKey = `${noteName.charAt(0).toLowerCase()}/${noteName.charAt(noteName.length - 1)}`;
+  const noteName = Tone.Midi(noteEvent.midiNote).toNote()
+  const pitch = noteName.slice(0, -1)
+  const octave = noteName.slice(-1)
+  let key = `${pitch.toLowerCase()}/${octave}`
+  const accidentals: string[] = []
 
-    let processedVFlowKey = vexFlowKey;
-    let accidentals: string[] = [];
+  if (pitch.includes('#')) {
+    accidentals.push('#')
+    key = `${pitch[0].toLowerCase()}/${octave}`
+  } else if (pitch.includes('b')) {
+    accidentals.push('b')
+    key = `${pitch[0].toLowerCase()}/${octave}`
+  }
 
-    if (noteName.includes('#')) {
-        processedVFlowKey = `${noteName.charAt(0).toLowerCase()}/` + noteName.slice(1).replace('#', '');
-        accidentals.push("#");
-    } else if (noteName.includes('b')) {
-        processedVFlowKey = `${noteName.charAt(0).toLowerCase()}/` + noteName.slice(1).replace('b', '');
-        accidentals.push("b");
-    }
+  // duration を決定
+  const dur = noteEvent.duration
+  const quarterMs = 500
+  let duration: string
+  if (dur >= quarterMs * 1.5) duration = 'h'
+  else if (dur >= quarterMs * 0.7) duration = 'q'
+  else if (dur >= quarterMs * 0.3) duration = '8'
+  else duration = '16'
 
-    const quarterNoteDurationMs = 500;
-    let durationType: 'w' | 'h' | 'q' | '8' | '16' | '32' | '64' | '128';
-
-    if (noteEvent.duration >= quarterNoteDurationMs * 1.5) {
-        durationType = 'h';
-    } else if (noteEvent.duration >= quarterNoteDurationMs * 0.7) {
-        durationType = 'q';
-    } else if (noteEvent.duration >= quarterNoteDurationMs * 0.3) {
-        durationType = '8';
-    } else {
-        durationType = '16';
-    }
-
-    const staveNote = new StaveNote({
-        keys: [processedVFlowKey],
-        duration: durationType,
-        // ★修正: stemDirection を stem_direction に変更 (VexFlow v4.2.0 API対応)
-        stem_direction: (parseInt(noteName.charAt(noteName.length - 1)) >= 5) ? Stem.DOWN : Stem.UP,
-    });
-
-    accidentals.forEach(acc => {
-        staveNote.addModifier(new Accidental(acc));
-    });
-
-    return staveNote;
+  const staveNote = new StaveNote({
+    keys: [key],
+    duration,
+    stem_direction: parseInt(octave, 10) >= 5 ? Stem.DOWN : Stem.UP,
+  })
+  accidentals.forEach(acc => staveNote.addModifier(new Accidental(acc)))
+  return staveNote
 }
 
 /**
- * VexFlowを使用して譜面を描画する関数
- * VexFlow v4.2.0対応
- * @param notes 描画するNoteEventの配列
- * @param container 譜面を描画するDOM要素 (HTMLDivElement に型を修正)
+ * VexFlow で五線譜を描画
  */
-export const drawVexFlowScore = (notes: NoteEvent[], container: HTMLDivElement) => {
-    container.innerHTML = '';
+export function drawVexFlowScore(notes: NoteEvent[], containerEl: HTMLElement): void {
+  console.log('[drawVexFlowScore] NoteEvent count:', notes.length, notes)
+  // 既存描画クリア
+  containerEl.innerHTML = ''
 
-    const renderer = new Renderer(container, Renderer.Backends.SVG);
-    renderer.resize(container.offsetWidth, 200);
-    const context = renderer.getContext();
+  const width = containerEl.clientWidth
+  const height = 200
+  const renderer = new Renderer(containerEl, Renderer.Backends.SVG)
+  renderer.resize(width, height)
+  const context = renderer.getContext()
 
-    const stave = new Stave(10, 0, container.offsetWidth - 20);
-    stave.addClef('treble').addTimeSignature('4/4');
-    stave.setContext(context).draw();
+  // 五線譜を描画
+  const stave = new Stave(10, 0, width - 20)
+  stave.addClef('treble').addTimeSignature('4/4').setContext(context).draw()
 
-    if (notes.length === 0) {
-        return;
-    }
+  if (!notes.length) {
+    console.log('[drawVexFlowScore] no notes to render')
+    return
+  }
 
-    const vfNotes = notes.map(convertNoteEventToVexFlowNote);
+  // NoteEvent -> StaveNote
+  const vfNotes = notes.map(convertNoteEventToVexFlowNote)
+  console.log('[drawVexFlowScore] vfNotes count:', vfNotes.length, vfNotes)
 
-    // Formatter.FormatAndDraw を使用 (VexFlow v4でも存在)
-    try {
-        Formatter.FormatAndDraw(context, stave, vfNotes, {
-            auto_beam: false, // 連桁の自動化 (今は無効)
-            // tickContext: voice.getTickContext(), // 必要であればVoiceとの紐付け
-            // add_rest_at_end: true,
-        });
-        console.log("Formatter.FormatAndDraw used for VexFlow rendering.");
-    } catch (e) {
-        console.error("VexFlow rendering error with Formatter.FormatAndDraw:", e);
-        container.innerHTML = `<p style="color: red;">譜面の描画に失敗しました。<br>エラー: ${e.message || e.toString()}</p>`;
-        return;
-    }
-
-    // Voice は描画に使わないので、voice.draw() も不要
-};
+  // static FormatAndDraw を優先
+  try {
+    Formatter.FormatAndDraw(context, stave, vfNotes, {
+      auto_beam: false,
+      align_rests: true,
+    })
+  } catch (err) {
+    console.warn('[drawVexFlowScore] FormatAndDraw failed, fallback manual voice draw:', err)
+    const voice = new Voice({ num_beats: 4, beat_value: 4 }).addTickables(vfNotes)
+    new Formatter().joinVoices([voice]).format([voice], width - 50)
+    voice.draw(context, stave)
+  }
+}

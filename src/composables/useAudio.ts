@@ -1,63 +1,75 @@
 // src/composables/useAudio.ts
 import * as Tone from 'tone';
 
-// ★修正: synth の型を Tone.PolySynth に明示する
 let synth: Tone.PolySynth | null = null;
 let isAudioContextInitializing = false;
 
-export const initAudioContext = async () => {
+/**
+ * AudioContext をユーザー操作のタイミングで初期化します。
+ */
+export async function initAudioContext(): Promise<void> {
   if (Tone.context.state !== 'running' && !isAudioContextInitializing) {
     isAudioContextInitializing = true;
     try {
       await Tone.start();
-      console.log("Tone.js AudioContext started!");
-
+      console.log('[useAudio] AudioContext started');
+      // PolySynth が未作成なら初期化
       if (!synth) {
-          // Tone.PolySynth の初期化はそのまま
-          synth = new Tone.PolySynth(Tone.Synth, {
-              oscillator: { type: "triangle" },
-              envelope: { attack: 0.005, decay: 0.1, sustain: 0.3, release: 0.8 }
-          }).toDestination();
-          console.log("Tone.PolySynth initialized and connected to destination!");
+        synth = new Tone.PolySynth(Tone.Synth, {
+          oscillator: { type: 'triangle' },
+          envelope: { attack: 0.005, decay: 0.1, sustain: 0.3, release: 0.8 }
+        }).toDestination();
+        console.log('[useAudio] PolySynth initialized');
       }
     } catch (e) {
-      console.error("Failed to start Tone.js AudioContext:", e);
+      console.error('[useAudio] Failed to start AudioContext:', e);
     } finally {
-        isAudioContextInitializing = false;
+      isAudioContextInitializing = false;
     }
-  } else if (synth && Tone.context.state === 'running') {
-      // console.log("AudioContext and Synth already running/initialized.");
   }
-};
+}
 
-export const playNote = async (midiNote: number, velocity: number) => {
-  if (!synth || Tone.context.state !== 'running') {
-    console.log("Attempting to ensure audio context/synth before playing note.");
+/**
+ * 指定した MIDI ノートを再生します。
+ * @param midiNote MIDI のノート番号 (例: 60)
+ * @param velocity 0～127 のベロシティ
+ */
+export async function playNote(
+  midiNote: number,
+  velocity: number = 127
+): Promise<void> {
+  // AudioContext または synth が準備できていなければ初期化
+  if (Tone.context.state !== 'running' || !synth) {
     await initAudioContext();
     if (!synth || Tone.context.state !== 'running') {
-      console.error("Failed to initialize synth or AudioContext. Cannot play note.");
+      console.warn('[useAudio] Cannot play note, synth/context not ready');
       return;
     }
   }
-
   const noteName = Tone.Midi(midiNote).toNote();
   synth.triggerAttack(noteName, Tone.now(), velocity / 127);
-};
+}
 
-export const stopNote = (midiNote: number) => {
-  if (synth) {
-    const noteName = Tone.Midi(midiNote).toNote();
-    // ★修正: triggerRelease の第二引数 (時間) を削除
-    synth.triggerRelease(noteName);
-  } else {
-    console.warn("stopNote was called, but synth is not initialized.");
+/**
+ * 指定した MIDI ノートの再生を停止します。
+ * @param midiNote MIDI のノート番号
+ */
+export function stopNote(midiNote: number): void {
+  if (!synth) {
+    console.warn('[useAudio] stopNote called but synth is not initialized');
+    return;
   }
-};
+  const noteName = Tone.Midi(midiNote).toNote();
+  synth.triggerRelease(noteName, Tone.now());
+}
 
-export const useAudio = () => {
+/**
+ * Composition API 形式で使用するフック
+ */
+export function useAudio() {
   return {
     initAudioContext,
     playNote,
     stopNote,
   };
-};
+}

@@ -6,23 +6,24 @@ const musicStore = useMusicStore();
 
 <template>
   <div class="record-controls">
-    <button @click="musicStore.startRecording" :disabled="musicStore.isRecording || musicStore.isPlaying">
+    <button @click="musicStore.startRecording" :disabled="!musicStore.canStartRecording">
       <span v-if="!musicStore.isRecording">録音開始</span>
       <span v-else>録音中...</span>
     </button>
-    <button @click="musicStore.stopRecording" :disabled="!musicStore.isRecording">
+    <button @click="musicStore.stopRecording" :disabled="!musicStore.canStopRecording">
       録音停止
     </button>
-    <button @click="musicStore.playSequence" :disabled="musicStore.isPlaying || musicStore.recordedNotes.length === 0">
+    <button @click="musicStore.playSequence" :disabled="!musicStore.canPlay">
       <span v-if="!musicStore.isPlaying">再生</span>
       <span v-else>再生中...</span>
     </button>
-    <button @click="musicStore.stopPlayback" :disabled="!musicStore.isPlaying">
+    <button @click="musicStore.stopPlayback" :disabled="!musicStore.canStopPlayback">
       再生停止
     </button>
     <p v-if="musicStore.isRecording" class="status-message recording">録音中...</p>
     <p v-if="musicStore.isPlaying" class="status-message playing">再生中...</p>
-    <p v-if="musicStore.recordedNotes.length > 0 && !musicStore.isRecording && !musicStore.isPlaying" class="status-message ready">
+    <p v-if="musicStore.isInitializingAudio" class="status-message initializing">初期化中...</p>
+    <p v-if="musicStore.recordedNotes.length > 0 && !musicStore.isRecording && !musicStore.isPlaying && !musicStore.isInitializingAudio" class="status-message ready">
         ノート数: {{ musicStore.recordedNotes.length }}
     </p>
   </div>
