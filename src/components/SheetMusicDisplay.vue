@@ -37,6 +37,7 @@ const noteMap = new Map<SVGGElement, string>()
 
 // 描画関数
 async function renderScore() {
+  console.log('[SheetMusicDisplay] renderScore start, notes=', props.notes)
   const container = sheetRef.value
   if (!container) return
 
@@ -84,6 +85,7 @@ function onResize() {
 // ResizeObserver を破棄するために外部へ保持
 let resizeObserver: ResizeObserver | null = null
 onMounted(async () => {
+  console.log('[SheetMusicDisplay] onMounted')
   // Vue の DOM 更新／CSS 適用が終わった次の tick で一度描画
   await nextTick()
   renderScore()
@@ -105,8 +107,11 @@ onBeforeUnmount(() => {
 })
 
 watch(
-  () => props.notes,
-  () => renderScore(),
+  () => props.notes.slice(),  // 配列の変更を深く検知
+  () => {
+    console.log('[SheetMusicDisplay] notes変更を検知')
+    renderScore()
+  },
   { deep: true }
 )
 

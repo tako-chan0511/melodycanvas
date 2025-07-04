@@ -52,38 +52,46 @@ export function drawVexFlowScore(
   notes: NoteEvent[],
   containerEl: HTMLDivElement
 ): void {
-  // (1) 既存 SVG をクリア
+  // 既存SVGクリア
   containerEl.innerHTML = ''
 
-  // (2) 幅・高さを取得
-  const { width } = containerEl.getBoundingClientRect()
-  const height    = 200
+  // コンテナ幅取得
+  const rect = containerEl.getBoundingClientRect()
+  const containerWidth = Math.floor(rect.width)
+  const NOTE_SPACING = 60
+  const requiredWidth = notes.length * NOTE_SPACING + 40
+  const drawWidth = Math.max(containerWidth, requiredWidth, 200)
+  const height = 200
 
-  // (3) SVG Renderer 初期化
+  // レンダラー初期化
   const renderer = new Renderer(containerEl, Renderer.Backends.SVG)
-  renderer.resize(width, height)
+  renderer.resize(drawWidth, height)
   const ctx = renderer.getContext()
 
-  // (4) 五線譜描画
-  const stave = new Stave(10, 0, width - 20)
-  stave
-    .addClef('treble')
-    .addTimeSignature('4/4')
-    .setContext(ctx)
-    .draw()
+  // 五線譜描画
+  const stave = new Stave(10, 0, drawWidth - 20)
+  stave.addClef('treble').addTimeSignature('4/4').setContext(ctx).draw()
 
-  if (!notes.length) return
+  if (!notes.length) {
+    return
+  }
 
-  // (5) NoteEvent -> StaveNote
+  // NoteEvent -> StaveNote
   const vfNotes = notes.map(convertNoteEventToVexFlowNote)
 
-  // (6) Formatter.FormatAndDraw で描画
+  // まずは FormatAndDraw を試す (align_rests で小節を埋める)
   try {
-    Formatter.FormatAndDraw(ctx, stave, vfNotes, { auto_beam: false })
-  } catch (e) {
-    // フォールバック: Voice + Formatter
-    const voice = new Voice({ num_beats: 4, beat_value: 4 }).addTickables(vfNotes)
-    new Formatter().joinVoices([voice]).format([voice], width - 20)
-    voice.draw(ctx, stave)
+    Formatter.FormatAndDraw(ctx, stave, vfNotes, {
+      auto_beam: false,
+      align_rests: true,
+    })
+    return
+  } catch (err) {
+    console.warn('[drawVexFlowScore] FormatAndDraw failed:', err)
   }
+
+  // フォールバック: 手動レイアウト
+  const voice = new Voice({ num_beats: 4, beat_value: 4 }).addTickables(vfNotes)
+  new Formatter().joinVoices([voice]).format([voice], drawWidth - 20)
+  voice.draw(ctx, stave)
 }
