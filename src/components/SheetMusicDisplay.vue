@@ -1,7 +1,10 @@
 <template>
   <div class="sheet-music-display">
     <h2>あなたの演奏</h2>
-    <div ref="sheetRef" class="score-container">
+    <div class="score-container-wrapper">
+      <!-- VexFlowが描画するSVG領域 -->
+      <div ref="sheetRef" class="score-container"></div>
+      <!-- ノートがない場合のメッセージ -->
       <p v-if="!notes.length" class="no-notes-message">
         まだ演奏がありません。鍵盤を弾いてみましょう！
       </p>
@@ -10,63 +13,25 @@
 </template>
 
 <script setup lang="ts">
-import {
-  ref,
-  computed,
-  onMounted,
-  onBeforeUnmount,
-  watch,
-  nextTick,
-} from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { drawVexFlowScore } from '@/composables/useSheetMusic'
 import { useMusicStore } from '@/stores/musicStore'
 import type { NoteEvent } from '@/types/note'
 
-// props で楽譜データを受け取る
+// propsで楽譜データを受け取る
 const props = defineProps<{ notes: NoteEvent[] }>()
 const notes = computed(() => props.notes || [])
 
-// 選択ノート管理のため Pinia ストア
+// Piniaストア
 const musicStore = useMusicStore()
 
-// 描画領域 (HTMLDivElement)
+// 描画コンテナへのref
 const sheetRef = ref<HTMLDivElement | null>(null)
 
-// SVG 上の SVGGElement と NoteEvent.id のマッピング
+// SVG要素とNoteEvent.idのマップ
 const noteMap = new Map<SVGGElement, string>()
 
-// 描画関数
-async function renderScore() {
-  console.log('[SheetMusicDisplay] renderScore start, notes=', props.notes)
-  const container = sheetRef.value
-  if (!container) return
-
-  // VexFlow で描画 (container.innerHTML は内部でクリアされる)
-  drawVexFlowScore(notes.value, container)
-
-  // 次の tick で SVG 完成 → ノート要素を取得してハイライト
-  await nextTick()
-  noteMap.clear()
-  const svg = container.querySelector('svg')
-  if (!svg) return
-  const noteEls = svg.querySelectorAll<SVGGElement>('.vf-stavenote')
-  noteEls.forEach((el, idx) => {
-    const ne = notes.value[idx]
-    if (!ne) return
-    noteMap.set(el, ne.id)
-    const isSel = musicStore.selectedNoteId === ne.id
-    const color = isSel ? 'blue' : 'black'
-    el.style.fill = color
-    el.style.stroke = color
-    // ステム／フラグも同色
-    const stem = el.querySelector('.vf-stem') as SVGPathElement | null
-    if (stem) stem.style.stroke = color
-    const flag = el.querySelector('.vf-flag') as SVGPathElement | null
-    if (flag) flag.style.fill = color
-  })
-}
-
-// ノートクリックで選択切り替え
+// クリック時ノート選択トグル
 function onClick(e: MouseEvent) {
   const el = (e.target as Element).closest('.vf-stavenote') as SVGGElement | null
   if (el && noteMap.has(el)) {
@@ -78,46 +43,72 @@ function onClick(e: MouseEvent) {
   renderScore()
 }
 
-// リサイズ対応
+// リサイズ時再描画
 function onResize() {
   renderScore()
 }
-// ResizeObserver を破棄するために外部へ保持
+
+// ResizeObserver
 let resizeObserver: ResizeObserver | null = null
+
+// 楽譜描画関数
+async function renderScore() {
+  const container = sheetRef.value
+  if (!container) return
+  // 描画
+  drawVexFlowScore(notes.value, container)
+
+  // 次tickでSVG完成後にノート要素をハイライト
+  await nextTick()
+  noteMap.clear()
+  const svg = container.querySelector('svg')
+  if (!svg) return
+  svg.querySelectorAll<SVGGElement>('.vf-stavenote').forEach((el, idx) => {
+    const ne = notes.value[idx]
+    if (!ne) return
+    noteMap.set(el, ne.id)
+    const isSel = musicStore.selectedNoteId === ne.id
+    const color = isSel ? 'blue' : 'black'
+    el.style.fill = color
+    el.style.stroke = color
+    const stem = el.querySelector('.vf-stem') as SVGPathElement | null
+    if (stem) stem.style.stroke = color
+    const flag = el.querySelector('.vf-flag') as SVGPathElement | null
+    if (flag) flag.style.fill = color
+  })
+}
+
 onMounted(async () => {
-  console.log('[SheetMusicDisplay] onMounted')
-  // Vue の DOM 更新／CSS 適用が終わった次の tick で一度描画
+  // 初回描画（CSS適用後）
   await nextTick()
   renderScore()
 
-  // さらに要素サイズが変わったら常に再描画
+  // ResizeObserverで幅変化検知
   if (sheetRef.value) {
-    resizeObserver = new ResizeObserver(() => {
-      renderScore()
-    })
+    resizeObserver = new ResizeObserver(() => renderScore())
     resizeObserver.observe(sheetRef.value)
+    // クリック, ウィンドウリサイズも
+    sheetRef.value.addEventListener('click', onClick)
+    window.addEventListener('resize', onResize)
   }
+
+  // データ変更時にも再描画
+  watch(
+    () => props.notes.slice(),
+    () => renderScore(),
+    { deep: true }
+  )
 })
+
 onBeforeUnmount(() => {
-  // 既存処理…
+  if (sheetRef.value) {
+    sheetRef.value.removeEventListener('click', onClick)
+    window.removeEventListener('resize', onResize)
+  }
   if (resizeObserver && sheetRef.value) {
     resizeObserver.unobserve(sheetRef.value)
     resizeObserver.disconnect()
   }
-})
-
-watch(
-  () => props.notes.slice(),  // 配列の変更を深く検知
-  () => {
-    console.log('[SheetMusicDisplay] notes変更を検知')
-    renderScore()
-  },
-  { deep: true }
-)
-
-onBeforeUnmount(() => {
-  sheetRef.value?.removeEventListener('click', onClick)
-  window.removeEventListener('resize', onResize)
   noteMap.clear()
 })
 </script>
@@ -137,6 +128,9 @@ h2 {
   text-align: center;
   margin-bottom: 12px;
   color: #333;
+}
+.score-container-wrapper {
+  position: relative;
 }
 .score-container {
   position: relative;
