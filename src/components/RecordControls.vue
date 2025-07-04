@@ -36,7 +36,7 @@ const musicStore = useMusicStore();
     <p v-if="musicStore.isInitializing" class="status-message initializing">
       初期化中...
     </p>
-    <p
+    <!-- <p
       v-if="
         musicStore.recordedNotes.length > 0 &&
         !musicStore.isRecording &&
@@ -46,7 +46,7 @@ const musicStore = useMusicStore();
       class="status-message ready"
     >
       ノート数: {{ musicStore.recordedNotes.length }}
-    </p>
+    </p> -->
 
     <div class="tempo-control">
       <label for="playback-rate"
