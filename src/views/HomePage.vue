@@ -52,7 +52,7 @@ watch(currentScoreName, newName => {
 
 <template>
   <div class="app-container">
-    <h1>Melody Canvas</h1>
+    <h1>Melody Canvas（vue3）</h1>
     <p>ピアノを演奏して、楽譜を作成・編集・ダウンロードしよう！</p>
 
     <!-- 録音コントロール -->
